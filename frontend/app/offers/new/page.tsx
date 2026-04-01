@@ -470,7 +470,7 @@ export default function NewOfferPage() {
               {offerId && (
                 <button
                   onClick={() =>
-                    window.open(`http://127.0.0.1:8000/offers/${offerId}/html`)
+                    window.open(`${process.env.NEXT_PUBLIC_API_URL}/offers/${offerId}/html`)
                   }
                   className="w-full rounded-xl border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition hover:bg-gray-50"
                 >
