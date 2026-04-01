@@ -214,49 +214,55 @@ def structure_offer(payload: AIRequest):
             messages=[
                 {
                     "role": "system",
-                    "content": "Du bist ein Experte für deutsche Handwerksangebote. Antworte ausschließlich mit gültigem JSON."
+                    "content": (
+                        "Du bist ein Experte für deutsche Handwerksangebote. "
+                        "Antworte ausschließlich mit gültigem JSON."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": f"""
-                    Branche: {payload.trade}
-                    Notizen: {payload.notes}
+Branche: {payload.trade}
+Notizen: {payload.notes}
 
-                    Gib ausschließlich JSON zurück im Format:
+Gib ausschließlich JSON zurück im Format:
 
-                    {{
-                      "title": "...",
-                      "intro_text": "...",
-                      "items": [
-                        {{
-                          "title": "...",
-                          "description": "...",
-                          "quantity": 1,
-                          "unit": "Pauschale"
-                        }}
-                      ]
-                    }}
-                    """
-                }
+{{
+  "title": "...",
+  "intro_text": "...",
+  "items": [
+    {{
+      "title": "...",
+      "description": "...",
+      "quantity": 1,
+      "unit": "Pauschale"
+    }}
+  ]
+}}
+""",
+                },
             ],
-            temperature=0.2
+            temperature=0.2,
         )
 
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
+        print("RAW AI RESPONSE:", content)
 
-        print("🧠 RAW AI RESPONSE:", content)
-
-        # 🔥 JSON extrahieren (falls Text drumherum)
         start = content.find("{")
         end = content.rfind("}") + 1
 
-        json_str = content[start:end]
+        if start == -1 or end == 0:
+            raise ValueError("Kein JSON in KI-Antwort gefunden")
 
-        return json.loads(json_str)
+        json_str = content[start:end]
+        data = json.loads(json_str)
+
+        return data
 
     except Exception as e:
-        print("🔥 KI ERROR:", e)
-        raise HTTPException(status_code=500, detail="KI Verarbeitung fehlgeschlagen")
+        print("KI ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=f"KI Verarbeitung fehlgeschlagen: {repr(e)}")
+
 # -------------------------------------------------------------------
 # PDF placeholder endpoint
 # -------------------------------------------------------------------
