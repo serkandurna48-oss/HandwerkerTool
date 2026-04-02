@@ -12,6 +12,9 @@ from fastapi.responses import HTMLResponse
 from datetime import datetime
 from fastapi import HTTPException
 import os
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Handwerker-Angebots-Tool API", version="0.1.0")
@@ -268,7 +271,120 @@ Gib ausschließlich JSON zurück im Format:
 # -------------------------------------------------------------------
 @app.get("/offers/{offer_id}/pdf")
 def generate_offer_pdf(offer_id: str):
-    return {"message": "PDF kommt später"}
+    offer = offers_db.get(offer_id)
+
+    if not offer:
+        raise HTTPException(status_code=404, detail="Angebot nicht gefunden")
+
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    y = height - 50
+    today = datetime.now().strftime("%d.%m.%Y")
+
+    # Kopf
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, y, "Angebot")
+    y -= 25
+
+    p.setFont("Helvetica", 11)
+    p.drawString(50, y, f"Angebotsnummer: {offer.offer_number}")
+    p.drawString(350, y, f"Datum: {today}")
+    y -= 30
+
+    # Titel
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, y, offer.title)
+    y -= 25
+
+    # Einleitung
+    p.setFont("Helvetica", 10)
+    intro_lines = (offer.intro_text or "").split("\n")
+    for line in intro_lines:
+        p.drawString(50, y, line[:100])
+        y -= 14
+
+    y -= 10
+
+    # Tabelle Header
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(50, y, "Pos.")
+    p.drawString(85, y, "Leistung")
+    p.drawString(320, y, "Menge")
+    p.drawString(380, y, "Einheit")
+    p.drawString(450, y, "Preis")
+    p.drawString(515, y, "Gesamt")
+    y -= 15
+
+    p.line(50, y, 560, y)
+    y -= 20
+
+    # Positionen
+    p.setFont("Helvetica", 9)
+    for i, item in enumerate(offer.items, start=1):
+        total = item.quantity * item.unit_price_net
+
+        if y < 120:
+            p.showPage()
+            y = height - 50
+            p.setFont("Helvetica", 9)
+
+        p.drawString(50, y, str(i))
+        p.drawString(85, y, item.title[:35])
+        p.drawString(320, y, str(item.quantity))
+        p.drawString(380, y, item.unit[:10])
+        p.drawRightString(500, y, f"{item.unit_price_net:.2f} €")
+        p.drawRightString(560, y, f"{total:.2f} €")
+        y -= 14
+
+        if item.description:
+            p.setFont("Helvetica", 8)
+            p.drawString(85, y, item.description[:80])
+            y -= 12
+            p.setFont("Helvetica", 9)
+
+        y -= 4
+
+    y -= 10
+    p.line(350, y, 560, y)
+    y -= 18
+
+    # Summen
+    p.setFont("Helvetica", 10)
+    p.drawString(380, y, "Netto:")
+    p.drawRightString(560, y, f"{offer.totals.subtotal_net:.2f} €")
+    y -= 16
+
+    p.drawString(380, y, f"MwSt. ({offer.vat_rate:.0f}%):")
+    p.drawRightString(560, y, f"{offer.totals.vat_amount:.2f} €")
+    y -= 16
+
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(380, y, "Gesamt:")
+    p.drawRightString(560, y, f"{offer.totals.total_gross:.2f} €")
+    y -= 30
+
+    p.setFont("Helvetica", 10)
+    p.drawString(50, y, "Vielen Dank für Ihre Anfrage.")
+    y -= 16
+    p.drawString(50, y, "Mit freundlichen Grüßen")
+    y -= 16
+    p.drawString(50, y, "Enis Durna")
+
+    p.showPage()
+    p.save()
+
+    pdf_data = buffer.getvalue()
+    buffer.close()
+
+    return Response(
+        content=pdf_data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{offer.offer_number}.pdf"'
+        },
+    )
 
 # -------------------------------------------------------------------
 # HTML Response placeholder endpoint
