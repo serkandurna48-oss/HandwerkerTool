@@ -219,30 +219,67 @@ def structure_offer(payload: AIRequest):
                     "role": "system",
                     "content": (
                         "Du bist ein Experte für deutsche Handwerksangebote. "
-                        "Antworte ausschließlich mit gültigem JSON."
+                        "Antworte ausschließlich mit gültigem JSON. "
+                        "Erzeuge nur konkrete Leistungspositionen, keine allgemeinen Sammelpositionen. "
+                        "Wenn der Kunde mehrere verschiedene Leistungen nennt, muss jede Hauptleistung "
+                        "eine eigene Position bekommen. "
+                        "Beispiel: 'Hecke schneiden und Rasen mähen' muss mindestens zwei getrennte Positionen ergeben: "
+                        "'Heckenschnitt' und 'Rasen mähen'. "
+                        "Fasse unterschiedliche Arbeiten niemals in einer Position zusammen. "
+                        "Erfinde keine zusätzlichen Positionen wie 'Allgemeine Gartenarbeiten', "
+                        "'Vorbereitung', 'Nachbereitung' oder 'Anfahrt', außer sie wurden ausdrücklich genannt. "
+                        "Jede Position soll genau eine klar verständliche Leistung beschreiben. "
+                        "Nutze quantity möglichst als 1 und unit meist als 'Pauschale', wenn keine genauere Menge genannt ist."
                     ),
                 },
                 {
                     "role": "user",
                     "content": f"""
-Branche: {payload.trade}
-Notizen: {payload.notes}
+                Branche: {payload.trade}
+                Notizen: {payload.notes}
 
-Gib ausschließlich JSON zurück im Format:
+                Aufgabe:
+                1. Lies die Kundenanfrage genau.
+                2. Trenne unterschiedliche Leistungen sauber voneinander.
+                3. Erzeuge pro Hauptleistung genau eine eigene Position.
+                4. Erzeuge keine unnötigen Zusatzpositionen.
+                5. Gib ausschließlich JSON zurück.
 
-{{
-  "title": "...",
-  "intro_text": "...",
-  "items": [
-    {{
-      "title": "...",
-      "description": "...",
-      "quantity": 1,
-      "unit": "Pauschale"
-    }}
-  ]
-}}
-""",
+                Beispiel:
+                Wenn in den Notizen steht:
+                "Hecke schneiden und Rasen mähen"
+
+                Dann soll items ungefähr so aussehen:
+                [
+                {{
+                    "title": "Heckenschnitt",
+                    "description": "Rückschnitt der Hecke gemäß Kundenanfrage.",
+                    "quantity": 1,
+                    "unit": "Pauschale"
+                }},
+                {{
+                    "title": "Rasen mähen",
+                    "description": "Mähen und Pflege des Rasens gemäß Kundenanfrage.",
+                    "quantity": 1,
+                    "unit": "Pauschale"
+                }}
+                ]
+
+                Gib ausschließlich JSON zurück im Format:
+
+                {{
+                "title": "...",
+                "intro_text": "...",
+                "items": [
+                    {{
+                    "title": "...",
+                    "description": "...",
+                    "quantity": 1,
+                    "unit": "Pauschale"
+                    }}
+                ]
+                }}
+                """,
                 },
             ],
             temperature=0.2,
