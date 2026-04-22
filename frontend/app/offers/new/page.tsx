@@ -567,16 +567,24 @@ function NewOfferPageContent() {
                 )}
 
                 {offerId && (
-                  <button
-                    onClick={() =>
-                      window.open(
-                        `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/html`
-                      )
-                    }
-                    className="w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-800 transition hover:bg-gray-50"
+                  <a
+                    href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/html`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-center text-sm font-medium text-gray-800 transition hover:bg-gray-50"
                   >
                     Vorschau öffnen
-                  </button>
+                  </a>
+                )}
+                {offerId && (
+                  <a
+                    href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-center text-sm font-medium text-gray-800 transition hover:bg-gray-50"
+                  >
+                    PDF herunterladen
+                  </a>
                 )}
               </div>
 

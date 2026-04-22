@@ -178,6 +178,14 @@ export default function OffersPage() {
                         >
                           Ansehen
                         </a>
+                        <a
+                          href={`${API_URL}/offers/${offer.id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                        >
+                          PDF
+                        </a>
                         <Link
                           href={`/offers/new?id=${offer.id}`}
                           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
