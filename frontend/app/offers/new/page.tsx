@@ -101,9 +101,8 @@ export default function NewOfferPage() {
       setItems(aiItems);
       setMessage("Angebotsstruktur wurde erstellt.");
       setMessageType("success");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Fehler bei KI-Strukturierung:", error);
-      console.log("Backend-Fehler:", error.response?.data);
       setMessage("KI-Strukturierung fehlgeschlagen.");
       setMessageType("error");
     } finally {
