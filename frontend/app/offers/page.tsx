@@ -134,8 +134,8 @@ export default function OffersPage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                   <th className="px-5 py-3.5">Angebotsnr.</th>
@@ -144,7 +144,7 @@ export default function OffersPage() {
                   <th className="px-5 py-3.5">Status</th>
                   <th className="px-5 py-3.5">Datum</th>
                   <th className="px-5 py-3.5 text-right">Brutto</th>
-                  <th className="px-5 py-3.5 text-right">Aktionen</th>
+                  <th className="py-3.5 pl-5 pr-8 text-right">Aktionen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -168,13 +168,14 @@ export default function OffersPage() {
                     <td className="whitespace-nowrap px-5 py-4 text-right font-medium text-gray-900">
                       {formatCurrency(Number(offer.totals.total_gross))}
                     </td>
-                    <td className="whitespace-nowrap px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="whitespace-nowrap py-4 pl-5 pr-8">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Ansehen + PDF */}
                         <a
                           href={`${API_URL}/offers/${offer.id}/html`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-300 hover:bg-gray-50"
                         >
                           Ansehen
                         </a>
@@ -182,19 +183,22 @@ export default function OffersPage() {
                           href={`${API_URL}/offers/${offer.id}/pdf`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-300 hover:bg-gray-50"
                         >
                           PDF
                         </a>
+                        {/* Trennlinie */}
+                        <span className="mx-1 h-4 w-px bg-gray-200" />
+                        {/* Bearbeiten + Löschen */}
                         <Link
                           href={`/offers/new?id=${offer.id}`}
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-300 hover:bg-gray-50"
                         >
                           Bearbeiten
                         </Link>
                         <button
                           onClick={() => handleDelete(offer.id, offer.offer_number)}
-                          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:border-red-300 hover:bg-red-50"
+                          className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-500 transition hover:border-red-300 hover:bg-red-50"
                         >
                           Löschen
                         </button>
