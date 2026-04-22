@@ -467,8 +467,7 @@ function NewOfferPageContent() {
                               step="0.01"
                               className="w-full rounded-xl border border-gray-400 bg-gray-50 py-3 pl-4 pr-9 text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-4 focus:ring-gray-200"
                               placeholder="0,00"
-                              value={item.unit_price_net}
-                              onFocus={(e) => e.target.select()}
+                              value={item.unit_price_net === 0 ? "" : item.unit_price_net}
                               onChange={(e) => updateItem(index, "unit_price_net", Number(e.target.value))}
                             />
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">€</span>
