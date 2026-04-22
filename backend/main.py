@@ -45,6 +45,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://handwerker-tool-ten.vercel.app",
+        "https://handwerker-tool-iszidn9pl-serkans-projects-a49183cd.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
