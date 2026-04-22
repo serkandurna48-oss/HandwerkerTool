@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 
@@ -33,6 +33,10 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [importMessage, setImportMessage] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadCustomers() {
     setLoading(true);
@@ -43,6 +47,57 @@ export default function CustomersPage() {
       console.error("Fehler beim Laden der Kunden:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!window.confirm(`Kunde "${name}" wirklich löschen?`)) return;
+    setDeleteError("");
+    try {
+      await api.delete(`/customers/${id}`);
+      loadCustomers();
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        setDeleteError("Kunde kann nicht gelöscht werden, solange noch Angebote vorhanden sind.");
+      } else {
+        setDeleteError("Kunde konnte nicht gelöscht werden. Bitte erneut versuchen.");
+      }
+    }
+  }
+
+  function downloadTemplate() {
+    const csv = "company_name,phone,email\nMuster GmbH,089 123456,info@muster.de\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kunden-vorlage.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportMessage("");  // alte Meldung sofort löschen bevor Upload startet
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post("/customers/import", formData);
+      const { imported, skipped } = res.data as { imported: number; skipped: number };
+      const parts: string[] = [];
+      if (imported > 0) parts.push(`${imported} Kunde${imported === 1 ? "" : "n"} importiert`);
+      if (skipped > 0) parts.push(`${skipped} übersprungen`);
+      setImportMessage(parts.join(", ") || "Keine Kunden importiert.");
+      if (imported > 0) loadCustomers();
+    } catch {
+      setImportMessage("Import fehlgeschlagen. Bitte CSV-Datei und Format prüfen.");
+    } finally {
+      setImporting(false);
+      // Input zurücksetzen, damit dieselbe Datei erneut hochgeladen werden kann
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -164,14 +219,53 @@ export default function CustomersPage() {
 
           {/* Kundenliste */}
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            {deleteError && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {deleteError}
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-950">Kundenliste</h2>
-              {customers.length > 0 && (
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                  {customers.length}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {customers.length > 0 && (
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                    {customers.length}
+                  </span>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleImport}
+                />
+                <button
+                  onClick={downloadTemplate}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-50"
+                >
+                  Vorlage
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                >
+                  {importing ? "Importiert..." : "CSV importieren"}
+                </button>
+              </div>
             </div>
+            <p className="mt-1.5 text-xs text-gray-400">
+              Erwartete Spalten: <span className="font-mono">company_name</span>, <span className="font-mono">phone</span>, <span className="font-mono">email</span>
+            </p>
+            {importMessage && (
+              <p className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+                importMessage.includes("fehlgeschlagen")
+                  ? "bg-red-50 text-red-700 border border-red-200"
+                  : "bg-green-50 text-green-700 border border-green-200"
+              }`}>
+                {importMessage}
+              </p>
+            )}
 
             <div className="mt-5">
               {loading ? (
@@ -187,15 +281,25 @@ export default function CustomersPage() {
                       key={customer.id}
                       className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
                     >
-                      <p className="font-semibold text-gray-900">{customer.company_name}</p>
-                      <div className="mt-1 space-y-0.5 text-sm text-gray-500">
-                        {customer.contact_person && <p>{customer.contact_person}</p>}
-                        {customer.email && <p>{customer.email}</p>}
-                        {(customer.phone || customer.city) && (
-                          <p>
-                            {[customer.phone, customer.city].filter(Boolean).join(" · ")}
-                          </p>
-                        )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-gray-900">{customer.company_name}</p>
+                          <div className="mt-1 space-y-0.5 text-sm text-gray-500">
+                            {customer.contact_person && <p>{customer.contact_person}</p>}
+                            {customer.email && <p>{customer.email}</p>}
+                            {(customer.phone || customer.city) && (
+                              <p>
+                                {[customer.phone, customer.city].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDelete(customer.id, customer.company_name)}
+                          className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition hover:border-red-300 hover:bg-red-50"
+                        >
+                          Löschen
+                        </button>
                       </div>
                     </div>
                   ))}

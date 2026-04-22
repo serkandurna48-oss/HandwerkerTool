@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 
@@ -32,7 +33,12 @@ type AIItemSuggestion = {
   unit: string;
 };
 
-export default function NewOfferPage() {
+// ─── inner component (needs Suspense because of useSearchParams) ─────────────
+
+function NewOfferPageContent() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id"); // present when editing an existing offer
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [trade, setTrade] = useState("");
@@ -41,53 +47,85 @@ export default function NewOfferPage() {
   const [introText, setIntroText] = useState("");
   const [items, setItems] = useState<OfferItem[]>([]);
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<"success" | "error" | "info">(
-    "info"
-  );
+  const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
   const [offerId, setOfferId] = useState("");
   const [offerStatus, setOfferStatus] = useState<"draft" | "approved" | "">("");
+  const [vatRate, setVatRate] = useState(DEFAULT_VAT_RATE);
+  const [validUntil, setValidUntil] = useState(getValidUntilDate());
   const [loadingAI, setLoadingAI] = useState(false);
   const [savingOffer, setSavingOffer] = useState(false);
   const [approvingOffer, setApprovingOffer] = useState(false);
+  const [loadingOffer, setLoadingOffer] = useState(false);
 
+  const isEditMode = Boolean(editId);
+
+  // ── load customers ──────────────────────────────────────────────────────────
   useEffect(() => {
-    async function loadCustomers() {
-      try {
-        const res = await api.get("/customers");
-        setCustomers(res.data);
-      } catch (error) {
-        console.error("Fehler beim Laden der Kunden:", error);
-      }
-    }
-
-    loadCustomers();
+    api.get("/customers").then((res) => setCustomers(res.data)).catch(() => {});
   }, []);
 
+  // ── load existing offer when ?id= is present ────────────────────────────────
+  useEffect(() => {
+    if (!editId) return;
+
+    setLoadingOffer(true);
+    api
+      .get(`/offers/${editId}`)
+      .then((res) => {
+        const offer = res.data;
+        setOfferId(offer.id);
+        setSelectedCustomerId(offer.customer_id);
+        setTitle(offer.title);
+        setIntroText(offer.intro_text || "");
+        setItems(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          offer.items.map((item: any) => ({
+            title: item.title,
+            description: item.description || "",
+            quantity: Number(item.quantity),
+            unit: item.unit,
+            unit_price_net: Number(item.unit_price_net),
+          }))
+        );
+        setOfferStatus(offer.status);
+        setVatRate(offer.vat_rate != null ? Number(offer.vat_rate) : 19);
+        if (offer.valid_until) setValidUntil(offer.valid_until);
+      })
+      .catch(() => {
+        setMessage("Angebot konnte nicht geladen werden.");
+        setMessageType("error");
+      })
+      .finally(() => setLoadingOffer(false));
+  }, [editId]);
+
+  // ── AI structuring ──────────────────────────────────────────────────────────
   async function handleAIStructure() {
     if (trade.trim().length < 2) {
       setMessage("Bitte ein Gewerk eingeben.");
       setMessageType("error");
       return;
     }
-
     if (notes.trim().length < 5) {
       setMessage("Bitte ausführlichere Notizen eingeben.");
       setMessageType("error");
       return;
     }
-
+    if (items.length > 0) {
+      const hasPrices = items.some((item) => item.unit_price_net > 0);
+      const confirmMsg = hasPrices
+        ? "Es sind bereits Positionen mit eingetragenen Preisen vorhanden.\n\nBeim Fortfahren werden alle Positionen und Preise durch die KI-Struktur ersetzt.\n\nFortfahren?"
+        : "Es sind bereits Positionen vorhanden.\n\nDiese werden durch die KI-Struktur ersetzt.\n\nFortfahren?";
+      if (!window.confirm(confirmMsg)) return;
+    }
     try {
       setLoadingAI(true);
       setMessage("");
-
       const res = await api.post("/ai/structure-offer", {
         trade: trade.trim(),
         notes: notes.trim(),
       });
-
       setTitle(res.data.title);
       setIntroText(res.data.intro_text);
-
       const aiItems: OfferItem[] = (res.data.items as AIItemSuggestion[]).map(
         (item) => ({
           title: item.title,
@@ -97,12 +135,10 @@ export default function NewOfferPage() {
           unit_price_net: 0,
         })
       );
-
       setItems(aiItems);
       setMessage("Angebotsstruktur wurde erstellt.");
       setMessageType("success");
-    } catch (error) {
-      console.error("Fehler bei KI-Strukturierung:", error);
+    } catch {
       setMessage("KI-Strukturierung fehlgeschlagen.");
       setMessageType("error");
     } finally {
@@ -110,29 +146,17 @@ export default function NewOfferPage() {
     }
   }
 
-  function updateItem(
-    index: number,
-    field: keyof OfferItem,
-    value: string | number
-  ) {
+  // ── item helpers ────────────────────────────────────────────────────────────
+  function updateItem(index: number, field: keyof OfferItem, value: string | number) {
     const nextItems = [...items];
-    nextItems[index] = {
-      ...nextItems[index],
-      [field]: value,
-    };
+    nextItems[index] = { ...nextItems[index], [field]: value };
     setItems(nextItems);
   }
 
   function addEmptyItem() {
     setItems((prev) => [
       ...prev,
-      {
-        title: "",
-        description: "",
-        quantity: 1,
-        unit: "Pauschale",
-        unit_price_net: 0,
-      },
+      { title: "", description: "", quantity: 1, unit: "Pauschale", unit_price_net: 0 },
     ]);
   }
 
@@ -140,59 +164,75 @@ export default function NewOfferPage() {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // ── totals ──────────────────────────────────────────────────────────────────
   const totalNet = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity * item.unit_price_net, 0),
     [items]
   );
-  const vatAmount = totalNet * (DEFAULT_VAT_RATE / 100);
+  const vatAmount = totalNet * (vatRate / 100);
   const totalGross = totalNet + vatAmount;
 
+  // ── save (POST = new, PUT = update) ─────────────────────────────────────────
   async function saveOffer() {
     if (!selectedCustomerId) {
       setMessage("Bitte zuerst einen Kunden auswählen.");
       setMessageType("error");
       return;
     }
-
     if (!title.trim()) {
       setMessage("Bitte einen Angebotstitel eingeben.");
       setMessageType("error");
       return;
     }
-
     if (items.length === 0) {
       setMessage("Bitte mindestens eine Position hinzufügen.");
       setMessageType("error");
       return;
     }
 
+    const payload = {
+      title,
+      intro_text: introText,
+      items,
+      valid_until: validUntil,
+      vat_rate: vatRate,
+      notes: "",
+    };
+
     try {
       setSavingOffer(true);
       setMessage("");
 
-      const res = await api.post("/offers", {
-        customer_id: selectedCustomerId,
-        title,
-        intro_text: introText,
-        items,
-        valid_until: getValidUntilDate(),
-        vat_rate: DEFAULT_VAT_RATE,
-        notes: "",
-      });
-
-      setOfferId(res.data.id);
-      setOfferStatus("draft");
-      setMessage(`Angebot gespeichert: ${res.data.offer_number}`);
-      setMessageType("success");
-    } catch (error) {
-      console.error("Fehler beim Speichern des Angebots:", error);
-      setMessage("Fehler beim Speichern des Angebots.");
+      if (offerId) {
+        // ── UPDATE existing offer ──────────────────────────────────────────
+        await api.put(`/offers/${offerId}`, payload);
+        setMessage("Angebot wurde aktualisiert.");
+        setMessageType("success");
+      } else {
+        // ── CREATE new offer ───────────────────────────────────────────────
+        const res = await api.post("/offers", {
+          customer_id: selectedCustomerId,
+          ...payload,
+        });
+        setOfferId(res.data.id);
+        setOfferStatus("draft");
+        setMessage(`Angebot gespeichert: ${res.data.offer_number}`);
+        setMessageType("success");
+      }
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        setMessage("Freigegebene Angebote können nicht mehr bearbeitet werden.");
+      } else {
+        setMessage("Fehler beim Speichern des Angebots.");
+      }
       setMessageType("error");
     } finally {
       setSavingOffer(false);
     }
   }
 
+  // ── approve ─────────────────────────────────────────────────────────────────
   async function approveOffer() {
     if (!offerId) return;
     try {
@@ -201,8 +241,7 @@ export default function NewOfferPage() {
       setOfferStatus("approved");
       setMessage("Angebot wurde freigegeben.");
       setMessageType("success");
-    } catch (error) {
-      console.error("Fehler bei der Freigabe:", error);
+    } catch {
       setMessage("Freigabe fehlgeschlagen.");
       setMessageType("error");
     } finally {
@@ -210,9 +249,9 @@ export default function NewOfferPage() {
     }
   }
 
+  // ── derived UI values ────────────────────────────────────────────────────────
   const selectedCustomerName =
-    customers.find((customer) => customer.id === selectedCustomerId)?.company_name ||
-    "Nicht ausgewählt";
+    customers.find((c) => c.id === selectedCustomerId)?.company_name || "Nicht ausgewählt";
 
   const statusClassName =
     messageType === "success"
@@ -224,6 +263,18 @@ export default function NewOfferPage() {
   const fieldClassName =
     "w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-4 focus:ring-gray-200";
 
+  // ── render ───────────────────────────────────────────────────────────────────
+  if (loadingOffer) {
+    return (
+      <div className="min-h-screen bg-neutral-50">
+        <Navbar />
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <p className="text-sm text-gray-400">Angebot wird geladen…</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <Navbar />
@@ -232,35 +283,33 @@ export default function NewOfferPage() {
         <div className="mb-8">
           <p className="text-sm font-medium text-gray-500">Angebote</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-gray-950">
-            Neues Angebot
+            {isEditMode ? "Angebot bearbeiten" : "Neues Angebot"}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-gray-600">
-            Erfasse die Grunddaten, lasse dir Positionen von der KI strukturieren
-            und speichere daraus ein sauberes Angebot.
+            {isEditMode
+              ? "Felder anpassen und Angebot aktualisieren."
+              : "Erfasse die Grunddaten, lasse dir Positionen von der KI strukturieren und speichere daraus ein sauberes Angebot."}
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-6">
+
+            {/* Grunddaten */}
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <div className="mb-6 flex flex-col gap-1">
-                <h2 className="text-lg font-semibold text-gray-950">
-                  Grunddaten
-                </h2>
-                <p className="text-sm text-gray-600">
-                  Kunde auswählen und Auftrag kurz beschreiben.
-                </p>
+                <h2 className="text-lg font-semibold text-gray-950">Grunddaten</h2>
+                <p className="text-sm text-gray-600">Kunde auswählen und Auftrag kurz beschreiben.</p>
               </div>
 
               <div className="grid gap-5 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-800">
-                    Kunde
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-800">Kunde</label>
                   <select
                     className={fieldClassName}
                     value={selectedCustomerId}
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    disabled={isEditMode}
                   >
                     <option value="">Kunde auswählen</option>
                     {customers.map((customer) => (
@@ -269,12 +318,13 @@ export default function NewOfferPage() {
                       </option>
                     ))}
                   </select>
+                  {isEditMode && (
+                    <p className="mt-1 text-xs text-gray-400">Kunde kann nachträglich nicht geändert werden.</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-800">
-                    Gewerk
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-800">Gewerk</label>
                   <input
                     className={fieldClassName}
                     placeholder="z. B. Sanitär"
@@ -285,33 +335,30 @@ export default function NewOfferPage() {
               </div>
 
               <div className="mt-5">
-                <label className="mb-2 block text-sm font-medium text-gray-800">
-                  Notizen
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-800">Notizen (für KI-Strukturierung)</label>
                 <textarea
                   className={`${fieldClassName} min-h-[150px] resize-y`}
                   placeholder="z. B. alte Dusche demontieren, neue Dusche montieren, Fliesen im Duschbereich erneuern, Entsorgung inklusive"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
+                <p className="mt-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                  Datenschutzhinweis: Inhalte dieses Feldes werden zur Strukturierung an OpenAI übermittelt. Bitte keine sensiblen personenbezogenen Daten eingeben.
+                </p>
               </div>
             </section>
 
+            {/* Angebotstext */}
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <div className="mb-6 flex flex-col gap-1">
-                <h2 className="text-lg font-semibold text-gray-950">
-                  Angebotstext
-                </h2>
+                <h2 className="text-lg font-semibold text-gray-950">Angebotstext</h2>
                 <p className="text-sm text-gray-600">
-                  Titel und Einleitung können automatisch erstellt und danach
-                  manuell überarbeitet werden.
+                  Titel und Einleitung können automatisch erstellt und danach manuell überarbeitet werden.
                 </p>
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-800">
-                  Angebotstitel
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-800">Angebotstitel</label>
                 <input
                   className={fieldClassName}
                   placeholder="z. B. Angebot für Sanitärarbeiten"
@@ -321,9 +368,7 @@ export default function NewOfferPage() {
               </div>
 
               <div className="mt-5">
-                <label className="mb-2 block text-sm font-medium text-gray-800">
-                  Einleitung
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-800">Einleitung</label>
                 <textarea
                   className={`${fieldClassName} min-h-[120px] resize-y`}
                   placeholder="z. B. Vielen Dank für Ihre Anfrage. Nachfolgend erhalten Sie unser Angebot."
@@ -333,17 +378,13 @@ export default function NewOfferPage() {
               </div>
             </section>
 
+            {/* Positionen */}
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-950">
-                    Positionen
-                  </h2>
-                  <p className="text-sm text-gray-600">
-                    Preise ergänzen und Positionen bei Bedarf anpassen.
-                  </p>
+                  <h2 className="text-lg font-semibold text-gray-950">Positionen</h2>
+                  <p className="text-sm text-gray-600">Preise ergänzen und Positionen bei Bedarf anpassen.</p>
                 </div>
-
                 <button
                   onClick={addEmptyItem}
                   className="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 transition hover:border-gray-400 hover:bg-gray-50"
@@ -354,20 +395,14 @@ export default function NewOfferPage() {
 
               {items.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-600">
-                  Noch keine Positionen vorhanden. Nutze die KI oder füge manuell
-                  eine Position hinzu.
+                  Noch keine Positionen vorhanden. Nutze die KI oder füge manuell eine Position hinzu.
                 </div>
               ) : (
                 <div className="space-y-4">
                   {items.map((item, index) => (
-                    <div
-                      key={index}
-                      className="rounded-2xl border border-gray-200 bg-white p-5"
-                    >
+                    <div key={index} className="rounded-2xl border border-gray-200 bg-white p-5">
                       <div className="mb-4 flex items-center justify-between">
-                        <div className="text-sm font-medium text-gray-700">
-                          Position {index + 1}
-                        </div>
+                        <div className="text-sm font-medium text-gray-700">Position {index + 1}</div>
                         <button
                           onClick={() => removeItem(index)}
                           className="text-sm font-medium text-red-600 transition hover:text-red-700"
@@ -377,79 +412,53 @@ export default function NewOfferPage() {
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-800">
-                          Titel
-                        </label>
+                        <label className="mb-2 block text-sm font-medium text-gray-800">Titel</label>
                         <input
                           className={fieldClassName}
                           placeholder="Positionstitel"
                           value={item.title}
-                          onChange={(e) =>
-                            updateItem(index, "title", e.target.value)
-                          }
+                          onChange={(e) => updateItem(index, "title", e.target.value)}
                         />
                       </div>
 
                       <div className="mt-5">
-                        <label className="mb-2 block text-sm font-medium text-gray-800">
-                          Beschreibung
-                        </label>
+                        <label className="mb-2 block text-sm font-medium text-gray-800">Beschreibung</label>
                         <textarea
                           className={`${fieldClassName} min-h-[110px] resize-y`}
                           placeholder="Beschreibung der Leistung"
                           value={item.description}
-                          onChange={(e) =>
-                            updateItem(index, "description", e.target.value)
-                          }
+                          onChange={(e) => updateItem(index, "description", e.target.value)}
                         />
                       </div>
 
                       <div className="mt-5 grid gap-4 md:grid-cols-3">
                         <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-800">
-                            Menge
-                          </label>
+                          <label className="mb-2 block text-sm font-medium text-gray-800">Menge</label>
                           <input
                             type="number"
                             className={fieldClassName}
                             placeholder="1"
                             value={item.quantity}
-                            onChange={(e) =>
-                              updateItem(index, "quantity", Number(e.target.value))
-                            }
+                            onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
                           />
                         </div>
-
                         <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-800">
-                            Einheit
-                          </label>
+                          <label className="mb-2 block text-sm font-medium text-gray-800">Einheit</label>
                           <input
                             className={fieldClassName}
                             placeholder="Pauschale"
                             value={item.unit}
-                            onChange={(e) =>
-                              updateItem(index, "unit", e.target.value)
-                            }
+                            onChange={(e) => updateItem(index, "unit", e.target.value)}
                           />
                         </div>
-
                         <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-800">
-                            Einzelpreis netto
-                          </label>
+                          <label className="mb-2 block text-sm font-medium text-gray-800">Einzelpreis netto</label>
                           <input
                             type="number"
                             className={fieldClassName}
                             placeholder="0"
                             value={item.unit_price_net}
-                            onChange={(e) =>
-                              updateItem(
-                                index,
-                                "unit_price_net",
-                                Number(e.target.value)
-                              )
-                            }
+                            onChange={(e) => updateItem(index, "unit_price_net", Number(e.target.value))}
                           />
                         </div>
                       </div>
@@ -460,25 +469,20 @@ export default function NewOfferPage() {
             </section>
           </div>
 
+          {/* Sidebar */}
           <aside className="xl:sticky xl:top-24 xl:self-start">
             <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
 
               {/* Kunde + Status */}
               <div className="rounded-xl bg-gray-50 p-4 space-y-3">
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                    Kunde
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-gray-900">
-                    {selectedCustomerName}
-                  </div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Kunde</div>
+                  <div className="mt-1 text-sm font-medium text-gray-900">{selectedCustomerName}</div>
                 </div>
 
                 {offerStatus && (
                   <div className="border-t border-gray-200 pt-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                      Status
-                    </div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Status</div>
                     <div className="mt-1.5">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
                         offerStatus === "approved"
@@ -503,9 +507,20 @@ export default function NewOfferPage() {
                     <span className="text-gray-500">Netto</span>
                     <span className="font-medium text-gray-900">{totalNet.toFixed(2)} €</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">MwSt. {DEFAULT_VAT_RATE} %</span>
-                    <span className="font-medium text-gray-900">{vatAmount.toFixed(2)} €</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-gray-500 shrink-0">MwSt.</label>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={vatRate}
+                        onChange={(e) => setVatRate(Number(e.target.value))}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:border-gray-400 focus:outline-none"
+                      >
+                        <option value={0}>0 %</option>
+                        <option value={7}>7 %</option>
+                        <option value={19}>19 %</option>
+                      </select>
+                      <span className="font-medium text-gray-900">{vatAmount.toFixed(2)} €</span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-1">
                     <span className="font-semibold text-gray-950">Gesamt</span>
@@ -526,11 +541,20 @@ export default function NewOfferPage() {
 
                 <button
                   onClick={saveOffer}
-                  disabled={savingOffer}
+                  disabled={savingOffer || offerStatus === "approved"}
                   className="w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
                 >
-                  {savingOffer ? "Speichert..." : "Angebot speichern"}
+                  {savingOffer
+                    ? "Speichert..."
+                    : isEditMode
+                    ? "Änderungen speichern"
+                    : "Angebot speichern"}
                 </button>
+                {offerStatus === "approved" && (
+                  <p className="text-center text-xs text-amber-600">
+                    Freigegebene Angebote können nicht mehr bearbeitet werden.
+                  </p>
+                )}
 
                 {offerId && offerStatus === "draft" && (
                   <button
@@ -545,7 +569,9 @@ export default function NewOfferPage() {
                 {offerId && (
                   <button
                     onClick={() =>
-                      window.open(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/html`)
+                      window.open(
+                        `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/html`
+                      )
                     }
                     className="w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-800 transition hover:bg-gray-50"
                   >
@@ -564,5 +590,14 @@ export default function NewOfferPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// ─── Suspense wrapper (required for useSearchParams in App Router) ────────────
+export default function NewOfferPage() {
+  return (
+    <Suspense>
+      <NewOfferPageContent />
+    </Suspense>
   );
 }

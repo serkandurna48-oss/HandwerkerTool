@@ -17,6 +17,12 @@ export default function Navbar() {
             Kunden
           </Link>
           <Link
+            href="/offers"
+            className="rounded-lg px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
+          >
+            Angebote
+          </Link>
+          <Link
             href="/offers/new"
             className="rounded-lg px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
           >

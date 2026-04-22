@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: handwerker-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: COMPANY_NAME
+        sync: false
+      - key: COMPANY_STREET
+        sync: false
+      - key: COMPANY_ZIP_CITY
+        sync: false
+      - key: COMPANY_PHONE
+        sync: false
+      - key: COMPANY_EMAIL
+        sync: false
