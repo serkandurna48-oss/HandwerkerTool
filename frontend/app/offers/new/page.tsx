@@ -431,14 +431,18 @@ function NewOfferPageContent() {
                         />
                       </div>
 
-                      <div className="mt-5 grid gap-4 md:grid-cols-3">
+                      <div className="mt-5 grid gap-3 grid-cols-2 md:grid-cols-4">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-gray-800">Menge</label>
                           <input
                             type="number"
+                            inputMode="numeric"
+                            min="0"
+                            step="1"
                             className={fieldClassName}
                             placeholder="1"
                             value={item.quantity}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
                           />
                         </div>
@@ -452,14 +456,29 @@ function NewOfferPageContent() {
                           />
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-800">Einzelpreis netto</label>
-                          <input
-                            type="number"
-                            className={fieldClassName}
-                            placeholder="0"
-                            value={item.unit_price_net}
-                            onChange={(e) => updateItem(index, "unit_price_net", Number(e.target.value))}
-                          />
+                          <label className="mb-2 block text-sm font-medium text-gray-800">
+                            Einzelpreis netto
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.01"
+                              className="w-full rounded-xl border border-gray-400 bg-gray-50 py-3 pl-4 pr-9 text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-4 focus:ring-gray-200"
+                              placeholder="0,00"
+                              value={item.unit_price_net}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => updateItem(index, "unit_price_net", Number(e.target.value))}
+                            />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">€</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-800">Gesamt</label>
+                          <div className="flex h-[50px] items-center rounded-xl border border-gray-200 bg-white px-4 text-[15px] font-semibold text-gray-900">
+                            {(item.quantity * item.unit_price_net).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          </div>
                         </div>
                       </div>
                     </div>
