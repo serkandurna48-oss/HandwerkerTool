@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import date, datetime
 from decimal import Decimal
 import uuid
@@ -12,12 +12,24 @@ from fastapi.responses import HTMLResponse
 from datetime import datetime
 from fastapi import HTTPException
 import os
+from dotenv import load_dotenv
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+load_dotenv(override=True)
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Handwerker-Angebots-Tool API", version="0.1.0")
+
+# -------------------------------------------------------------------
+# Betriebsdaten – hier zentral anpassen
+# -------------------------------------------------------------------
+COMPANY_NAME = "Ihr Betrieb"
+COMPANY_STREET = "Musterstraße 1"
+COMPANY_ZIP_CITY = "12345 Musterstadt"
+CONTACT_NAME = "Ihr Ansprechpartner"
+DEFAULT_VAT_RATE = Decimal("19.00")
 
 # CORS for local frontend development
 app.add_middleware(
@@ -44,7 +56,7 @@ offers_db = {}
 # Models
 # -------------------------------------------------------------------
 class CustomerCreate(BaseModel):
-    company_name: str = Field(..., min_length=2, max_length=200)
+    company_name: str = Field(..., min_length=2, max_length=200, description="Firmenname oder Privatname")
     contact_person: Optional[str] = Field(None, max_length=100)
     street: Optional[str] = None
     zip_code: Optional[str] = None
@@ -74,7 +86,7 @@ class OfferCreate(BaseModel):
     intro_text: Optional[str] = Field(None, max_length=2000)
     items: List[OfferItem]
     valid_until: Optional[date] = None
-    vat_rate: Decimal = Field(default=Decimal("19.00"), ge=0)
+    vat_rate: Decimal = Field(default=DEFAULT_VAT_RATE, ge=0)
     notes: Optional[str] = Field(None, max_length=2000)
 
 
@@ -88,6 +100,7 @@ class Offer(OfferCreate):
     id: str
     offer_number: str
     created_at: datetime
+    status: Literal["draft", "approved"] = "draft"
     totals: OfferTotals
 
 
@@ -185,6 +198,7 @@ def create_offer(payload: OfferCreate):
         id=offer_id,
         offer_number=generate_offer_number(),
         created_at=datetime.utcnow(),
+        status="draft",
         totals=totals,
         **payload.model_dump(),
     )
@@ -203,6 +217,15 @@ def get_offer(offer_id: str):
     if not offer:
         raise HTTPException(status_code=404, detail="Angebot nicht gefunden")
     return offer
+
+
+@app.patch("/offers/{offer_id}/approve", response_model=Offer)
+def approve_offer(offer_id: str):
+    offer = offers_db.get(offer_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Angebot nicht gefunden")
+    offers_db[offer_id] = offer.model_copy(update={"status": "approved"})
+    return offers_db[offer_id]
 
 
 # -------------------------------------------------------------------
@@ -407,7 +430,7 @@ def generate_offer_pdf(offer_id: str):
     y -= 16
     p.drawString(50, y, "Mit freundlichen Grüßen")
     y -= 16
-    p.drawString(50, y, "Enis Durna")
+    p.drawString(50, y, COMPANY_NAME)
 
     p.showPage()
     p.save()
@@ -570,9 +593,9 @@ def get_offer_html(offer_id: str):
     <body>
         <div class="header">
             <div class="company">
-                <strong>Dein Betrieb</strong><br>
-                Musterstraße 1<br>
-                12345 Musterstadt
+                <strong>{COMPANY_NAME}</strong><br>
+                {COMPANY_STREET}<br>
+                {COMPANY_ZIP_CITY}
             </div>
 
             <div class="meta">
@@ -619,7 +642,7 @@ def get_offer_html(offer_id: str):
         <div class="footer">
             Vielen Dank für Ihre Anfrage.<br><br>
             Mit freundlichen Grüßen<br>
-            Dein Betrieb
+            {COMPANY_NAME}
         </div>
     </body>
     </html>

@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 
+const DEFAULT_VAT_RATE = 19;
+
+function getValidUntilDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 14);
+  return date.toISOString().split("T")[0];
+}
+
 type Customer = {
   id: string;
   company_name: string;
@@ -37,8 +45,10 @@ export default function NewOfferPage() {
     "info"
   );
   const [offerId, setOfferId] = useState("");
+  const [offerStatus, setOfferStatus] = useState<"draft" | "approved" | "">("");
   const [loadingAI, setLoadingAI] = useState(false);
   const [savingOffer, setSavingOffer] = useState(false);
+  const [approvingOffer, setApprovingOffer] = useState(false);
 
   useEffect(() => {
     async function loadCustomers() {
@@ -135,7 +145,7 @@ export default function NewOfferPage() {
     () => items.reduce((sum, item) => sum + item.quantity * item.unit_price_net, 0),
     [items]
   );
-  const vatAmount = totalNet * 0.19;
+  const vatAmount = totalNet * (DEFAULT_VAT_RATE / 100);
   const totalGross = totalNet + vatAmount;
 
   async function saveOffer() {
@@ -166,12 +176,13 @@ export default function NewOfferPage() {
         title,
         intro_text: introText,
         items,
-        valid_until: "2026-04-15",
-        vat_rate: 19,
+        valid_until: getValidUntilDate(),
+        vat_rate: DEFAULT_VAT_RATE,
         notes: "",
       });
 
       setOfferId(res.data.id);
+      setOfferStatus("draft");
       setMessage(`Angebot gespeichert: ${res.data.offer_number}`);
       setMessageType("success");
     } catch (error) {
@@ -180,6 +191,23 @@ export default function NewOfferPage() {
       setMessageType("error");
     } finally {
       setSavingOffer(false);
+    }
+  }
+
+  async function approveOffer() {
+    if (!offerId) return;
+    try {
+      setApprovingOffer(true);
+      await api.patch(`/offers/${offerId}/approve`);
+      setOfferStatus("approved");
+      setMessage("Angebot wurde freigegeben.");
+      setMessageType("success");
+    } catch (error) {
+      console.error("Fehler bei der Freigabe:", error);
+      setMessage("Freigabe fehlgeschlagen.");
+      setMessageType("error");
+    } finally {
+      setApprovingOffer(false);
     }
   }
 
@@ -434,85 +462,101 @@ export default function NewOfferPage() {
           </div>
 
           <aside className="xl:sticky xl:top-24 xl:self-start">
-            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-950">Aktionen</h2>
-                <p className="mt-1 text-sm text-gray-600">
-                  Erst strukturieren, dann speichern.
-                </p>
+            <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+
+              {/* Kunde + Status */}
+              <div className="rounded-xl bg-gray-50 p-4 space-y-3">
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                    Kunde
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-gray-900">
+                    {selectedCustomerName}
+                  </div>
+                </div>
+
+                {offerStatus && (
+                  <div className="border-t border-gray-200 pt-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                      Status
+                    </div>
+                    <div className="mt-1.5">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        offerStatus === "approved"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${offerStatus === "approved" ? "bg-green-500" : "bg-amber-500"}`} />
+                        {offerStatus === "approved" ? "Freigegeben" : "Entwurf"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* Summen */}
               <div className="rounded-xl bg-gray-50 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                  Aktueller Kunde
-                </div>
-                <div className="mt-1 text-sm font-medium text-gray-900">
-                  {selectedCustomerName}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between text-gray-400 text-xs pb-1">
+                    <span>{items.length} {items.length === 1 ? "Position" : "Positionen"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Netto</span>
+                    <span className="font-medium text-gray-900">{totalNet.toFixed(2)} €</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">MwSt. {DEFAULT_VAT_RATE} %</span>
+                    <span className="font-medium text-gray-900">{vatAmount.toFixed(2)} €</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-1">
+                    <span className="font-semibold text-gray-950">Gesamt</span>
+                    <span className="font-semibold text-gray-950">{totalGross.toFixed(2)} €</span>
+                  </div>
                 </div>
               </div>
 
-              <button
-                onClick={handleAIStructure}
-                disabled={loadingAI}
-                className="w-full rounded-xl bg-gray-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-400"
-              >
-                {loadingAI ? "KI arbeitet..." : "Mit KI strukturieren"}
-              </button>
-
-              <button
-                onClick={saveOffer}
-                disabled={savingOffer}
-                className="w-full rounded-xl border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
-              >
-                {savingOffer ? "Speichert..." : "Angebot speichern"}
-              </button>
-
-              {offerId && (
+              {/* Aktions-Buttons */}
+              <div className="space-y-2 pt-1">
                 <button
-                  onClick={() =>
-                    window.open(`${process.env.NEXT_PUBLIC_API_URL}/offers/${offerId}/html`)
-                  }
-                  className="w-full rounded-xl border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition hover:bg-gray-50"
+                  onClick={handleAIStructure}
+                  disabled={loadingAI}
+                  className="w-full rounded-xl bg-gray-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                  Angebot anzeigen
+                  {loadingAI ? "KI arbeitet..." : "Mit KI strukturieren"}
                 </button>
-              )}
 
+                <button
+                  onClick={saveOffer}
+                  disabled={savingOffer}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                >
+                  {savingOffer ? "Speichert..." : "Angebot speichern"}
+                </button>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <h3 className="text-sm font-semibold text-gray-900">Übersicht</h3>
+                {offerId && offerStatus === "draft" && (
+                  <button
+                    onClick={approveOffer}
+                    disabled={approvingOffer}
+                    className="w-full rounded-xl bg-green-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  >
+                    {approvingOffer ? "Wird freigegeben..." : "Freigeben"}
+                  </button>
+                )}
 
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Positionen</span>
-                    <span className="font-medium text-gray-900">{items.length}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Netto</span>
-                    <span className="font-medium text-gray-900">
-                      {totalNet.toFixed(2)} €
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">MwSt. 19%</span>
-                    <span className="font-medium text-gray-900">
-                      {vatAmount.toFixed(2)} €
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-gray-200 pt-3">
-                    <span className="font-semibold text-gray-950">Brutto</span>
-                    <span className="font-semibold text-gray-950">
-                      {totalGross.toFixed(2)} €
-                    </span>
-                  </div>
-                </div>
+                {offerId && (
+                  <button
+                    onClick={() =>
+                      window.open(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/offers/${offerId}/html`)
+                    }
+                    className="w-full rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-800 transition hover:bg-gray-50"
+                  >
+                    Vorschau öffnen
+                  </button>
+                )}
               </div>
 
               {message && (
-                <div className={`rounded-xl p-4 text-sm ${statusClassName}`}>
+                <div className={`rounded-xl p-3.5 text-sm ${statusClassName}`}>
                   {message}
                 </div>
               )}
